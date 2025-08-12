@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>절운동 카운터 (수동/자동)</title>
+  <style>
+    :root {
+      --bg:#0f1220; --card:#171a2b; --text:#e9ecff; --muted:#9aa3c7; --accent:#82a0ff;
+      --btn:#22263c; --btn2:#2b3150; --good:#68d391; --warn:#f6ad55; --danger:#f56565;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background: radial-gradient(1200px 700px at 30% -10%, #1b2040, transparent), var(--bg);
+      color: var(--text);
+    }
+    .container {
+      max-width: 820px; margin: 0 auto; padding: 20px 16px 48px;
+    }
+    h1 { margin: 8px 0 16px; font-size: clamp(22px, 4vw, 28px); font-weight: 800; letter-spacing: .3px; }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.0));
+      border: 1px solid rgba(255,255,255,.06); border-radius: 16px; padding: 16px; margin: 12px 0;
+      box-shadow: 0 10px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+    @media (min-width: 720px) { .row { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+    label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }
+    input[type="number"], select {
+      width: 100%; padding: 12px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08);
+      background: var(--card); color: var(--text); outline: none; font-size: 16px;
+    }
+    input[type="checkbox"] { transform: translateY(2px); }
+    .inline { display:flex; align-items:center; gap:10px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .counter {
+      display: flex; align-items: baseline; gap: 12px; justify-content: center; padding: 8px 0 0;
+      font-weight: 800; letter-spacing: .5px;
+    }
+    .counter .num { font-size: clamp(56px, 14vw, 90px); line-height: 1; }
+    .counter .goal { font-size: clamp(18px, 3.5vw, 22px); color: var(--muted); }
+    .subgrid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 8px; }
+    .pill {
+      border: 1px dashed rgba(255,255,255,.15); padding: 10px 12px; border-radius: 12px; text-align: center;
+      font-variant-numeric: tabular-nums; font-size: 15px; color: var(--muted);
+    }
+    .btns { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 12px; }
+    button {
+      appearance: none; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 12px 16px;
+      background: var(--btn); color: var(--text); font-weight: 700; font-size: 16px; cursor: pointer;
+      transition: transform .05s ease, background .2s ease, border-color .2s ease;
+    }
+    button:hover { border-color: rgba(255,255,255,.18); }
+    button:active { transform: translateY(1px) scale(.99); }
+    .primary { background: var(--btn2); }
+    .good { background: rgba(104,211,145,.12); border-color: rgba(104,211,145,.35); }
+    .warn { background: rgba(246,173,85,.12); border-color: rgba(246,173,85,.35); }
+    .danger { background: rgba(245,101,101,.12); border-color: rgba(245,101,101,.35); }
+    .grid-two { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .hide { display: none !important; }
+    footer { margin-top: 16px; text-align: center; color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>절운동 카운터 <span class="muted">수동/자동(초/1회)</span></h1>
+
+    <div class="card">
+      <div class="row">
+        <label>모드
+          <select id="mode">
+            <option value="timed">자동(초/1회)</option>
+            <option value="manual">수동</option>
+          </select>
+        </label>
+        <label>목표 횟수
+          <input type="number" id="goal" value="100" min="1" step="1" />
+        </label>
+        <label id="timedBox">1회 시간(초)
+          <input type="number" id="secPerRep" value="9" min="1" step="0.1" />
+        </label>
+        <label>옵션
+          <div class="inline">
+            <label class="inline"><input type="checkbox" id="sound" checked /> 소리</label>
+            <label class="inline"><input type="checkbox" id="vibe" checked /> 진동</label>
+          </div>
+        </label>
+      </div>
+      <div class="muted" style="margin-top:8px">💡 자동 모드: 시작과 함께 타이머가 돌고, 설정한 초마다 자동으로 +1 됩니다. 일시정지/재개 가능!</div>
+    </div>
+
+    <div class="card">
+      <div class="counter">
+        <div class="num" id="count">0</div>
+        <div class="goal">/ <span id="goalOut">100</span></div>
+      </div>
+
+      <div id="timedOnly" class="subgrid">
+        <div class="pill">이번 1회 남은 시간: <b id="remain">-</b>s</div>
+        <div class="pill">세션 경과: <b id="elapsed">00:00</b></div>
+      </div>
+
+      <div id="manualOnly" class="btns hide">
+        <button id="plus" class="primary">+1</button>
+        <button id="minus">-1</button>
+        <button id="resetM" class="warn">리셋</button>
+      </div>
+
+      <div id="timedBtns" class="btns">
+        <button id="start" class="good">시작</button>
+        <button id="pause" class="warn" disabled>일시정지</button>
+        <button id="resetT" class="danger">리셋</button>
+      </div>
+    </div>
+
+    <footer>제작: 로컬 전용 단일 HTML. 홈 화면에 추가(PWA) 가능. 화면 꺼짐 방지 지원(가능한 브라우저에서).</footer>
+  </div>
+
+  <script>
+    // ---------- Elements
+    const els = {
+      mode: document.getElementById('mode'),
+      goal: document.getElementById('goal'),
+      goalOut: document.getElementById('goalOut'),
+      secPerRep: document.getElementById('secPerRep'),
+      sound: document.getElementById('sound'),
+      vibe: document.getElementById('vibe'),
+      count: document.getElementById('count'),
+      remain: document.getElementById('remain'),
+      elapsed: document.getElementById('elapsed'),
+      timedOnly: document.getElementById('timedOnly'),
+      manualOnly: document.getElementById('manualOnly'),
+      timedBtns: document.getElementById('timedBtns'),
+      start: document.getElementById('start'),
+      pause: document.getElementById('pause'),
+      resetT: document.getElementById('resetT'),
+      plus: document.getElementById('plus'),
+      minus: document.getElementById('minus'),
+      resetM: document.getElementById('resetM'),
+      timedBox: document.getElementById('timedBox')
+    };
+
+    // ---------- State
+    let state = {
+      mode: localStorage.getItem('mode') || 'timed',
+      count: 0,
+      goal: parseInt(localStorage.getItem('goal') || '100', 10),
+      perRepMs: Math.max(1000, Math.floor(parseFloat(localStorage.getItem('perRepSec') || '9') * 1000)),
+      running: false,
+      paused: false,
+      nextTick: null,
+      sessionStart: null,
+      pauseRemainMs: 0,
+      elapsedAtPause: 0
+    };
+
+    let rafId = null;
+    let audioCtx = null;
+    let wakeLock = null;
+
+    function savePrefs() {
+      localStorage.setItem('mode', state.mode);
+      localStorage.setItem('goal', String(state.goal));
+      localStorage.setItem('perRepSec', String(state.perRepMs / 1000));
+    }
+
+    // ---------- Utils
+    function fmtMMSS(ms) {
+      ms = Math.max(0, ms|0);
+      const s = Math.floor(ms/1000);
+      const mm = String(Math.floor(s/60)).padStart(2,'0');
+      const ss = String(s%60).padStart(2,'0');
+      return mm + ':' + ss;
+    }
+    function fmtSec1(ms) {
+      return (Math.max(0, ms)/1000).toFixed(1);
+    }
+    function beep() {
+      if (!els.sound.checked) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.value = 880;
+        o.connect(g); g.connect(audioCtx.destination);
+        const t = audioCtx.currentTime;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+        o.start(t); o.stop(t + 0.16);
+      } catch (e) {}
+    }
+    function vibrate(ms=40) {
+      if (!els.vibe.checked) return;
+      if (navigator.vibrate) { try { navigator.vibrate(ms); } catch(e){} }
+    }
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', ()=>{ /* released */ });
+        }
+      } catch(e){ /* ignore */ }
+    }
+    async function releaseWakeLock() {
+      try { if (wakeLock) { await wakeLock.release(); wakeLock = null; } } catch(e){}
+    }
+
+    // ---------- Rendering
+    function refreshModeUI() {
+      els.goal.value = state.goal;
+      els.goalOut.textContent = state.goal;
+      els.secPerRep.value = (state.perRepMs / 1000);
+      els.mode.value = state.mode;
+
+      const isTimed = state.mode === 'timed';
+      els.timedOnly.classList.toggle('hide', !isTimed);
+      els.timedBtns.classList.toggle('hide', !isTimed);
+      els.manualOnly.classList.toggle('hide', isTimed);
+      els.timedBox.classList.toggle('hide', !isTimed);
+    }
+
+    function renderCounts() {
+      els.count.textContent = state.count;
+      els.goalOut.textContent = state.goal;
+    }
+    function renderTimers(nowMs) {
+      if (state.mode !== 'timed') return;
+      if (!state.running) {
+        els.remain.textContent = '-';
+        els.elapsed.textContent = '00:00';
+        return;
+      }
+      if (state.paused) {
+        els.remain.textContent = fmtSec1(state.pauseRemainMs);
+        els.elapsed.textContent = fmtMMSS(state.elapsedAtPause);
+      } else {
+        const remainMs = Math.max(0, state.nextTick - nowMs);
+        els.remain.textContent = fmtSec1(remainMs);
+        const elapsed = nowMs - state.sessionStart;
+        els.elapsed.textContent = fmtMMSS(elapsed);
+      }
+    }
+
+    // ---------- Core
+    function addCount(n=1) {
+      state.count = Math.max(0, state.count + n);
+      renderCounts();
+      if (n > 0) { beep(); vibrate(35); }
+      if (state.goal && state.count >= state.goal && state.running && state.mode==='timed') {
+        // Auto stop at goal
+        stopTimer(true);
+      }
+    }
+
+    function loop(now) {
+      rafId = requestAnimationFrame(loop);
+      if (state.mode !== 'timed' || !state.running || state.paused) {
+        renderTimers(performance.now());
+        return;
+      }
+      const nowMs = Date.now();
+      // catch up in case of background tab
+      while (nowMs >= state.nextTick) {
+        addCount(1);
+        state.nextTick += state.perRepMs;
+      }
+      renderTimers(nowMs);
+    }
+
+    function startTimer() {
+      if (state.running) return;
+      state.running = true;
+      state.paused = false;
+      state.sessionStart = Date.now();
+      state.nextTick = state.sessionStart + state.perRepMs;
+      els.start.disabled = true;
+      els.pause.disabled = false;
+      requestWakeLock();
+      if (!rafId) rafId = requestAnimationFrame(loop);
+    }
+
+    function pauseTimer() {
+      if (!state.running || state.paused) return;
+      state.paused = true;
+      state.pauseRemainMs = Math.max(0, state.nextTick - Date.now());
+      state.elapsedAtPause = Date.now() - state.sessionStart;
+      els.pause.textContent = '재개';
+    }
+
+    function resumeTimer() {
+      if (!state.running || !state.paused) return;
+      state.paused = false;
+      state.sessionStart = Date.now() - state.elapsedAtPause;
+      state.nextTick = Date.now() + state.pauseRemainMs;
+      els.pause.textContent = '일시정지';
+    }
+
+    function stopTimer(hitGoal=false) {
+      state.running = false;
+      state.paused = false;
+      els.start.disabled = false;
+      els.pause.disabled = true;
+      els.pause.textContent = '일시정지';
+      releaseWakeLock();
+      // celebratory double beep if goal reached
+      if (hitGoal) {
+        setTimeout(beep, 120);
+        setTimeout(beep, 320);
+      }
+    }
+
+    function resetAll() {
+      stopTimer(false);
+      state.count = 0;
+      state.sessionStart = null;
+      state.nextTick = null;
+      state.pauseRemainMs = 0;
+      state.elapsedAtPause = 0;
+      renderCounts();
+      renderTimers(performance.now());
+    }
+
+    // ---------- Events
+    els.mode.addEventListener('change', () => {
+      state.mode = els.mode.value;
+      savePrefs();
+      refreshModeUI();
+    });
+
+    els.goal.addEventListener('change', () => {
+      const v = parseInt(els.goal.value, 10);
+      if (!isNaN(v) && v > 0) {
+        state.goal = v; savePrefs(); renderCounts();
+      }
+    });
+
+    els.secPerRep.addEventListener('change', () => {
+      let v = parseFloat(els.secPerRep.value);
+      if (!isNaN(v) && v >= 1) {
+        state.perRepMs = Math.floor(v * 1000);
+        savePrefs();
+        if (state.running && !state.paused && state.mode==='timed') {
+          // Re-anchor next tick from now
+          state.nextTick = Date.now() + state.perRepMs;
+        }
+      }
+    });
+
+    // Timed buttons
+    els.start.addEventListener('click', startTimer);
+    els.pause.addEventListener('click', () => {
+      if (!state.running) return;
+      if (state.paused) resumeTimer(); else pauseTimer();
+    });
+    els.resetT.addEventListener('click', resetAll);
+
+    // Manual buttons
+    els.plus && els.plus.addEventListener('click', () => addCount(1));
+    els.minus && els.minus.addEventListener('click', () => addCount(-1));
+    els.resetM && els.resetM.addEventListener('click', resetAll);
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (state.mode === 'manual') {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); addCount(1); }
+        if (e.key === 'Backspace') { e.preventDefault(); addCount(-1); }
+      } else {
+        if (e.key === ' ') {
+          e.preventDefault();
+          if (!state.running) startTimer();
+          else if (state.paused) resumeTimer(); else pauseTimer();
+        }
+        if (e.key.toLowerCase() === 'r') { e.preventDefault(); resetAll(); }
+      }
+    });
+
+    // Init
+    refreshModeUI();
+    renderCounts();
+    renderTimers(performance.now());
+  </script>
+</body>
+</html>
