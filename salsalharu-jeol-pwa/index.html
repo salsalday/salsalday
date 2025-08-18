@@ -621,5 +621,11 @@
     });
   }
 </script>
+  <script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistration().then(r => r && r.update());
+  navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+}
+</script>
 </body>
 </html>
