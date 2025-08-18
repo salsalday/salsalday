@@ -173,6 +173,30 @@
         <div id="sessions" class="session-list"></div>
       </div>
     </div>
+<!-- Coupang Partners banner -->
+<div class="card" id="ad-card" style="text-align:center; margin-top:10px">
+  <div class="muted" style="margin-bottom:8px; font-size:12px">
+    이 배너는 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
+  </div>
+
+  <script src="https://ads-partners.coupang.com/g.js"></script>
+  <script>
+    (function () {
+      // 카드 폭에 맞춰 반응형으로 배너 크기 계산
+      var card = document.getElementById('ad-card');
+      var w = Math.min(680, card.clientWidth || 680);   // 최대 680px
+      var h = Math.round(w * 140 / 680);                // 680x140 비율 유지
+      new PartnersCoupang.G({
+        "id": 906399,
+        "template": "carousel",
+        "trackingCode": "AF2830785",
+        "width": w,
+        "height": h,
+        "tsource": ""
+      });
+    })();
+  </script>
+</div>
 
     <footer>로컬 저장(브라우저) · 홈 화면 추가 추천 · 만든 사람: 살살하루 @Salsal Day </footer>
   </div>
