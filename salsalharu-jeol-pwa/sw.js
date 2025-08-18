@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jeol-pwa-v3';  // 숫자만 올리면 돼
+const CACHE_NAME = 'jeol-pwa-v4';  // 숫자만 올리면 돼
 const ASSETS = [
   './',
   './index.html',
