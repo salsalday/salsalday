@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jeol-pwa-v1';
+const CACHE_NAME = 'jeol-pwa-v3';  // 숫자만 올리면 돼
 const ASSETS = [
   './',
   './index.html',
@@ -8,13 +8,16 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
+  self.skipWaiting(); // ★ 새 SW를 바로 활성화 대기 상태로
   e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.map(k => k !== CACHE_NAME ? caches.delete(k) : null)))
-  );
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => k !== CACHE_NAME ? caches.delete(k) : null));
+    await self.clients.claim(); // ★ 모든 열린 탭/앱을 새 SW가 즉시 제어
+  })());
 });
 
 self.addEventListener('fetch', (e) => {
