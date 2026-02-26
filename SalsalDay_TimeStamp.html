@@ -34,14 +34,23 @@
   .stage{ display:flex; justify-content:center; align-items:center; min-height:60vh; }
   canvas{ max-width:100%; height:auto; border-radius:14px; border:1px solid #2a2b2f; background:#000; }
   .tiny{ font-size:12px; color:var(--muted); }
+
   .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
   .grid .row > label{ flex: 0 0 72px; }
   .grid input[type="color"]{ flex: 0 0 44px; width:44px; min-width:44px; }
+
   .badge {
     display:inline-block; padding:6px 10px; border-radius:999px;
     background:#0f1012; border:1px solid #2a2b2f; color:var(--muted);
     font-size:12px;
   }
+
+  .toggle {
+    display:flex; align-items:center; gap:10px;
+    width:100%; padding:10px;
+    background:#0f1012; border:1px solid #2a2b2f; border-radius:12px;
+  }
+  .toggle input { width:auto; }
 </style>
 </head>
 
@@ -59,6 +68,7 @@
       <label>로고</label>
       <div style="width:100%; display:flex; gap:10px; align-items:center;">
         <span class="badge" id="logoStatus">로고 로딩 중…</span>
+        <button id="reloadLogoBtn" style="flex:0 0 auto;">로고 재시도</button>
       </div>
     </div>
 
@@ -83,6 +93,15 @@
     <div class="row">
       <label>촬영시간</label>
       <span class="badge" id="exifBadge">아직 없음</span>
+    </div>
+
+    <!-- ✅ 옵션: 24시간제 -->
+    <div class="row">
+      <label>표기 옵션</label>
+      <div class="toggle">
+        <input id="use24h" type="checkbox" />
+        <span class="tiny">24시간제 사용 (예: 16:21)</span>
+      </div>
     </div>
 
     <div class="grid">
@@ -126,9 +145,7 @@
       <button id="downloadBtn">다운로드</button>
     </div>
 
-    <div class="hint">
-      (c) 2026. SalsalDay Co. All rights reserved.
-    </div>
+    <div class="hint">(c) 2026. SalsalDay Co. All rights reserved.</div>
   </section>
 
   <section class="card">
@@ -141,40 +158,48 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+
+  // ✅ 고정 로고 URL
   const LOGO_URL = "https://raw.githubusercontent.com/salsalday/salsalday/refs/heads/main/salsalday_logo.png";
 
   const photoInput = $("photoInput");
   const logoStatus = $("logoStatus");
+  const reloadLogoBtn = $("reloadLogoBtn");
+
   const timeMode = $("timeMode");
   const manualTime = $("manualTime");
   const setNowBtn = $("setNowBtn");
   const exifBadge = $("exifBadge");
+
+  const use24h = $("use24h");
+
   const textColor = $("textColor");
   const boxColor = $("boxColor");
   const boxAlpha = $("boxAlpha");
   const position = $("position");
   const logoScale = $("logoScale");
   const fontScale = $("fontScale");
+
   const applyBtn = $("applyBtn");
   const downloadBtn = $("downloadBtn");
+
   const statusEl = $("status");
   const cv = $("cv");
-  const ctx = cv.getContext("2d");
+
+  // ✅ display-p3 시도
+  let ctx = null;
+  try { ctx = cv.getContext("2d", { colorSpace: "display-p3" }); }
+  catch { ctx = cv.getContext("2d"); }
 
   let baseImg = null;
   let logoImg = null;
   let exifDate = null;
-  let lastRenderedDataUrl = null;
+  let lastRenderedBlob = null; // PNG blob (무손실)
 
+  // 초기
   setManualTimeToNow();
   syncTimeModeUI();
-  loadLogo();
-
-  function syncTimeModeUI(){
-    const isExif = timeMode.value === "exif";
-    manualTime.disabled = isExif;
-    setNowBtn.disabled = isExif;
-  }
+  loadLogoFromUrl();
 
   timeMode.addEventListener("change", syncTimeModeUI);
   setNowBtn.addEventListener("click", () => {
@@ -182,6 +207,14 @@
     timeMode.value = "manual";
     syncTimeModeUI();
   });
+
+  reloadLogoBtn.addEventListener("click", loadLogoFromUrl);
+
+  function syncTimeModeUI(){
+    const isExif = timeMode.value === "exif";
+    manualTime.disabled = isExif;
+    setNowBtn.disabled = isExif;
+  }
 
   function setManualTimeToNow(){
     const d = new Date();
@@ -193,19 +226,27 @@
     manualTime.value = `${yyyy}-${MM}-${dd}T${HH}:${mm}`;
   }
 
-  async function loadLogo(){
+  async function loadLogoFromUrl(){
     try{
-      const res = await fetch(LOGO_URL + "?v=" + Date.now());
+      logoStatus.textContent = "로고 로딩 중…";
+      const res = await fetch(LOGO_URL + "?v=" + Date.now(), { cache: "no-store" });
+      if(!res.ok) throw new Error("logo fetch fail");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
+
       const img = new Image();
       img.onload = () => {
         logoImg = img;
         logoStatus.textContent = "로고 로드 완료";
       };
+      img.onerror = () => {
+        logoStatus.textContent = "로고 로드 실패";
+        alert("로고 이미지 디코딩 실패");
+      };
       img.src = url;
-    }catch{
+    } catch {
       logoStatus.textContent = "로고 로드 실패";
+      alert("로고를 불러오지 못했어. 인터넷 연결 확인 후 다시 시도해줘.");
     }
   }
 
@@ -217,86 +258,268 @@
     const img = new Image();
     img.onload = () => {
       baseImg = img;
+
+      resetCtxState();
       cv.width = img.naturalWidth;
       cv.height = img.naturalHeight;
       ctx.drawImage(img, 0, 0);
-      statusEl.textContent = `업로드 완료`;
+
+      statusEl.textContent = `업로드 완료 (${img.naturalWidth}x${img.naturalHeight})`;
+      lastRenderedBlob = null;
     };
     img.src = url;
 
-    exifDate = await exifr.parse(file).then(d => d?.DateTimeOriginal || null);
-    exifBadge.textContent = exifDate ? formatStamp(exifDate) : "촬영정보 없음";
-  });
-
-  applyBtn.addEventListener("click", () => {
-    if (!baseImg || !logoImg) return alert("사진 또는 로고 준비 안됨");
-
-    const d = timeMode.value === "exif" ? exifDate : new Date(manualTime.value);
-    if (!d) return alert("시간 정보 없음");
-
-    renderStamp(baseImg, logoImg, formatStamp(d));
-    lastRenderedDataUrl = cv.toDataURL("image/jpeg", 0.92);
-  });
-
-  downloadBtn.addEventListener("click", async () => {
-    if (!lastRenderedDataUrl) return alert("먼저 스탬프 적용해줘");
-
-    const blob = await (await fetch(lastRenderedDataUrl)).blob();
-    const file = new File([blob], "SalsalDay.jpg", { type: "image/jpeg" });
-
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file] });
+    exifDate = await readExifDate(file);
+    if (exifDate) {
+      exifBadge.textContent = formatStamp(exifDate, use24h.checked).line1 + " " + formatStamp(exifDate, use24h.checked).line2;
     } else {
-      const a = document.createElement("a");
-      a.href = lastRenderedDataUrl;
-      a.download = "SalsalDay.jpg";
-      a.click();
+      exifBadge.textContent = "촬영정보 없음";
+      if (timeMode.value === "exif") {
+        timeMode.value = "manual";
+        syncTimeModeUI();
+        alert("이 사진은 촬영시간(EXIF)이 없어. 시간 모드를 '직접 지정'으로 바꿨어.");
+      }
     }
   });
 
-  function formatStamp(d) {
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    let hh = d.getHours();
-    const ampm = hh >= 12 ? "PM" : "AM";
-    hh = hh % 12;
-    if (hh === 0) hh = 12;
-    const min = String(d.getMinutes()).padStart(2, "0");
-    const hh2 = String(hh).padStart(2, "0");
-    return `${mm}.${dd} ${hh2}:${min} ${ampm}`;
+  async function readExifDate(file){
+    try{
+      const exif = await exifr.parse(file, { pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"] });
+      return exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate || null;
+    }catch{
+      return null;
+    }
   }
 
-  function renderStamp(img, logo, stampText){
+  applyBtn.addEventListener("click", async () => {
+    if (!baseImg) return alert("사진 먼저 업로드해줘!");
+    if (!logoImg) return alert("로고가 아직 로딩 중이야. 잠깐만!");
+
+    const d = getStampDate();
+    if (!d) return;
+
+    resetCtxState();
+
+    const stamp = formatStamp(d, use24h.checked);
+
+    renderStamp({
+      img: baseImg,
+      logo: logoImg,
+      dateLine: stamp.line1, // ✅ 굵게
+      timeLine: stamp.line2, // ✅ 얇게 + 더 작게
+      textHex: textColor.value,
+      boxHex: boxColor.value,
+      boxAlphaPct: Number(boxAlpha.value),
+      pos: position.value,
+      logoScalePct: Number(logoScale.value),
+      fontScalePct: Number(fontScale.value),
+      brightness: 1.00
+    });
+
+    lastRenderedBlob = await canvasToBlob("image/png", 1.0);
+    statusEl.textContent = "스탬프 적용 완료!";
+  });
+
+  function getStampDate(){
+    if (timeMode.value === "exif") {
+      if (!exifDate) {
+        alert("촬영시간(EXIF)을 찾지 못했어. 시간 모드를 '직접 지정'으로 바꿔줘.");
+        return null;
+      }
+      return exifDate;
+    }
+    if (!manualTime.value) {
+      alert("스탬프 시간을 선택해줘!");
+      return null;
+    }
+    return new Date(manualTime.value);
+  }
+
+  downloadBtn.addEventListener("click", async () => {
+    if (!lastRenderedBlob) return alert("먼저 스탬프 적용해줘!");
+
+    const d = getStampDate();
+    if (!d) return;
+
+    const stamp = formatStamp(d, use24h.checked);
+    const safeStamp = (stamp.line1 + "_" + stamp.line2).replace(/:/g, "-").replace(/\s+/g, "_");
+    const ts = fileTimestamp(new Date());
+    const filename = `${safeStamp}_SalsalDay_${ts}.png`;
+
+    const file = new File([lastRenderedBlob], filename, { type: "image/png" });
+
+    // iOS: 공유 시트 → 이미지 저장(사진앱)
+    if (navigator.share && navigator.canShare) {
+      try {
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      } catch {}
+    }
+
+    // fallback: 새 탭 열기
+    const objUrl = URL.createObjectURL(lastRenderedBlob);
+    window.open(objUrl, "_blank");
+    alert("공유가 지원되지 않아 새 창으로 열었어. 이미지를 길게 눌러 '이미지 저장' 해줘!");
+  });
+
+  function resetCtxState(){
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.filter = "none";
+  }
+
+  // ✅ 요청 포맷:
+  // 2026.02.26(목)
+  // 04:21 PM
+  function formatStamp(d, use24) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+
+    const days = ["일","월","화","수","목","금","토"];
+    const day = days[d.getDay()];
+    const line1 = `${yyyy}.${mm}.${dd}(${day})`;
+
+    const min = String(d.getMinutes()).padStart(2, "0");
+
+    let line2 = "";
+    if (use24) {
+      const HH = String(d.getHours()).padStart(2, "0");
+      line2 = `${HH}:${min}`;
+    } else {
+      let hh = d.getHours();
+      const ampm = hh >= 12 ? "PM" : "AM";
+      hh = hh % 12;
+      if (hh === 0) hh = 12;
+      const hh2 = String(hh).padStart(2, "0");
+      line2 = `${hh2}:${min} ${ampm}`;
+    }
+
+    return { line1, line2 };
+  }
+
+  function fileTimestamp(d){
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    const HH = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    const ss = String(d.getSeconds()).padStart(2,"0");
+    return `${yyyy}${MM}${dd}_${HH}${mm}${ss}`;
+  }
+
+  function hexToRgb(hex) {
+    const h = hex.replace("#", "");
+    return {
+      r: parseInt(h.slice(0,2), 16),
+      g: parseInt(h.slice(2,4), 16),
+      b: parseInt(h.slice(4,6), 16),
+    };
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function renderStamp(opts) {
+    const {
+      img, logo, dateLine, timeLine,
+      textHex, boxHex, boxAlphaPct,
+      pos, logoScalePct, fontScalePct,
+      brightness
+    } = opts;
+
     const W = img.naturalWidth;
     const H = img.naturalHeight;
+
     cv.width = W;
     cv.height = H;
-    ctx.drawImage(img, 0, 0);
 
-    const fontPx = W * (fontScale.value / 100);
-    ctx.font = `600 ${fontPx}px monospace`;
-    const textW = ctx.measureText(stampText).width;
+    // 이미지
+    ctx.filter = brightness && brightness !== 1 ? `brightness(${brightness})` : "none";
+    ctx.drawImage(img, 0, 0);
+    ctx.filter = "none";
 
     const pad = W * 0.03;
-    const boxPad = fontPx * 0.7;
-    const boxW = textW + boxPad * 2;
-    const boxH = fontPx + boxPad;
 
-    const x = pad;
-    const y = H - pad - boxH;
+    // ✅ base font
+    const fontPx = W * (fontScalePct / 100);
+    const dateSize = fontPx;                 // 날짜: 기본 크기
+    const timeSize = Math.max(10, fontPx*0.88); // 시간: 조금 작게
 
-    const bg = boxColor.value;
-    ctx.fillStyle = bg;
-    ctx.globalAlpha = boxAlpha.value / 100;
-    ctx.fillRect(x, y, boxW, boxH);
-    ctx.globalAlpha = 1;
+    const boxPadX = dateSize * 0.75;
+    const boxPadY = dateSize * 0.55;
+    const radius = dateSize * 0.6;
 
-    ctx.fillStyle = textColor.value;
-    ctx.textBaseline = "middle";
-    ctx.fillText(stampText, x + boxPad, y + boxH / 2);
+    // 텍스트 폭 계산
+    ctx.font = `700 ${dateSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    const dateW = ctx.measureText(dateLine).width;
 
-    const logoSize = W * (logoScale.value / 100);
-    ctx.drawImage(logo, W - pad - logoSize, H - pad - logoSize, logoSize, logoSize);
+    ctx.font = `400 ${timeSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    const timeW = ctx.measureText(timeLine).width;
+
+    const textW = Math.max(dateW, timeW);
+    const boxW = textW + boxPadX * 2;
+
+    const lineGap = dateSize * 0.20; // 날짜/시간 간격
+    const textH = dateSize + lineGap + timeSize;
+    const boxH = textH + boxPadY * 2;
+
+    // 박스 위치
+    let boxX, boxY;
+    if (pos === "bl") { boxX = pad;            boxY = H - pad - boxH; }
+    if (pos === "br") { boxX = W - pad - boxW; boxY = H - pad - boxH; }
+    if (pos === "tl") { boxX = pad;            boxY = pad; }
+    if (pos === "tr") { boxX = W - pad - boxW; boxY = pad; }
+
+    // 배경 박스
+    const bg = hexToRgb(boxHex);
+    ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${boxAlphaPct/100})`;
+    roundRectPath(ctx, boxX, boxY, boxW, boxH, radius);
+    ctx.fill();
+
+    // 텍스트 (왼쪽 정렬, 세로 중앙 느낌)
+    const startX = boxX + boxPadX;
+    const startY = boxY + boxPadY;
+
+    ctx.fillStyle = textHex;
+    ctx.textBaseline = "top";
+
+    // 날짜: 굵게
+    ctx.font = `700 ${dateSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.fillText(dateLine, startX, startY);
+
+    // 시간: 얇게 + 더 작게
+    ctx.font = `400 ${timeSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.fillText(timeLine, startX, startY + dateSize + lineGap);
+
+    // 로고: 박스 반대편
+    const logoSize = W * (logoScalePct / 100);
+    let logoX, logoY;
+    if (pos === "bl") { logoX = W - pad - logoSize; logoY = H - pad - logoSize; }
+    if (pos === "br") { logoX = pad;                logoY = H - pad - logoSize; }
+    if (pos === "tl") { logoX = W - pad - logoSize; logoY = pad; }
+    if (pos === "tr") { logoX = pad;                logoY = pad; }
+
+    ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+  }
+
+  function canvasToBlob(type, quality){
+    return new Promise((resolve) => {
+      cv.toBlob((blob) => resolve(blob), type, quality);
+    });
   }
 </script>
 </body>
