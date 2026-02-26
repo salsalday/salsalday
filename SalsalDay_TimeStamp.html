@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>SalsalDay TimeStamp</title>
 
+<!-- EXIF 읽기 -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js"></script>
 
 <style>
@@ -59,6 +60,7 @@
       <label>로고</label>
       <div style="width:100%; display:flex; gap:10px; align-items:center;">
         <span class="badge" id="logoStatus">로고 로딩 중…</span>
+        <button id="reloadLogoBtn" style="flex:0 0 auto;">로고 재시도</button>
       </div>
     </div>
 
@@ -126,9 +128,7 @@
       <button id="downloadBtn">다운로드</button>
     </div>
 
-    <div class="hint">
-      (c) 2026. SalsalDay Co. All rights reserved.
-    </div>
+    <div class="hint">(c) 2026. SalsalDay Co. All rights reserved.</div>
   </section>
 
   <section class="card">
@@ -141,34 +141,51 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+
+  // ✅ 고정 로고 URL
   const LOGO_URL = "https://raw.githubusercontent.com/salsalday/salsalday/refs/heads/main/salsalday_logo.png";
 
   const photoInput = $("photoInput");
   const logoStatus = $("logoStatus");
+  const reloadLogoBtn = $("reloadLogoBtn");
+
   const timeMode = $("timeMode");
   const manualTime = $("manualTime");
   const setNowBtn = $("setNowBtn");
   const exifBadge = $("exifBadge");
+
   const textColor = $("textColor");
   const boxColor = $("boxColor");
   const boxAlpha = $("boxAlpha");
   const position = $("position");
   const logoScale = $("logoScale");
   const fontScale = $("fontScale");
+
   const applyBtn = $("applyBtn");
   const downloadBtn = $("downloadBtn");
+
   const statusEl = $("status");
   const cv = $("cv");
-  const ctx = cv.getContext("2d");
+
+  // ✅ iOS 색감 보존 시도: display-p3 (지원 안 되면 자동으로 기본값)
+  let ctx = null;
+  try {
+    ctx = cv.getContext("2d", { colorSpace: "display-p3" });
+  } catch {
+    ctx = cv.getContext("2d");
+  }
 
   let baseImg = null;
+  let baseFile = null;
   let logoImg = null;
-  let exifDate = null;
-  let lastRenderedDataUrl = null;
 
+  let exifDate = null;
+  let lastRenderedBlob = null;   // ✅ PNG blob (무손실)
+
+  // 초기 설정
   setManualTimeToNow();
   syncTimeModeUI();
-  loadLogo();
+  loadLogoFromUrl();
 
   function syncTimeModeUI(){
     const isExif = timeMode.value === "exif";
@@ -177,6 +194,7 @@
   }
 
   timeMode.addEventListener("change", syncTimeModeUI);
+
   setNowBtn.addEventListener("click", () => {
     setManualTimeToNow();
     timeMode.value = "manual";
@@ -193,66 +211,163 @@
     manualTime.value = `${yyyy}-${MM}-${dd}T${HH}:${mm}`;
   }
 
-  async function loadLogo(){
+  reloadLogoBtn.addEventListener("click", loadLogoFromUrl);
+
+  async function loadLogoFromUrl(){
     try{
-      const res = await fetch(LOGO_URL + "?v=" + Date.now());
+      logoStatus.textContent = "로고 로딩 중…";
+      const res = await fetch(LOGO_URL + "?v=" + Date.now(), { cache: "no-store" });
+      if(!res.ok) throw new Error("logo fetch fail");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
+
       const img = new Image();
       img.onload = () => {
         logoImg = img;
         logoStatus.textContent = "로고 로드 완료";
       };
+      img.onerror = () => {
+        logoStatus.textContent = "로고 로드 실패";
+        alert("로고 이미지 디코딩 실패");
+      };
       img.src = url;
-    }catch{
+    }catch(e){
       logoStatus.textContent = "로고 로드 실패";
+      alert("로고를 불러오지 못했어. 인터넷 연결 확인 후 다시 시도해줘.");
     }
   }
 
   photoInput.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    baseFile = file;
 
+    // 이미지 로드
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       baseImg = img;
+
+      // ✅ 매번 리셋 (누적되면 어두워지는 느낌 방지)
+      resetCtxState();
+
       cv.width = img.naturalWidth;
       cv.height = img.naturalHeight;
       ctx.drawImage(img, 0, 0);
-      statusEl.textContent = `업로드 완료`;
+
+      statusEl.textContent = `업로드 완료 (${img.naturalWidth}x${img.naturalHeight})`;
+      lastRenderedBlob = null;
     };
     img.src = url;
 
-    exifDate = await exifr.parse(file).then(d => d?.DateTimeOriginal || null);
-    exifBadge.textContent = exifDate ? formatStamp(exifDate) : "촬영정보 없음";
-  });
-
-  applyBtn.addEventListener("click", () => {
-    if (!baseImg || !logoImg) return alert("사진 또는 로고 준비 안됨");
-
-    const d = timeMode.value === "exif" ? exifDate : new Date(manualTime.value);
-    if (!d) return alert("시간 정보 없음");
-
-    renderStamp(baseImg, logoImg, formatStamp(d));
-    lastRenderedDataUrl = cv.toDataURL("image/jpeg", 0.92);
-  });
-
-  downloadBtn.addEventListener("click", async () => {
-    if (!lastRenderedDataUrl) return alert("먼저 스탬프 적용해줘");
-
-    const blob = await (await fetch(lastRenderedDataUrl)).blob();
-    const file = new File([blob], "SalsalDay.jpg", { type: "image/jpeg" });
-
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file] });
+    // EXIF 시간
+    exifDate = await readExifDate(file);
+    if (exifDate) {
+      exifBadge.textContent = formatStamp(exifDate);
     } else {
-      const a = document.createElement("a");
-      a.href = lastRenderedDataUrl;
-      a.download = "SalsalDay.jpg";
-      a.click();
+      exifBadge.textContent = "촬영정보 없음";
+      if (timeMode.value === "exif") {
+        timeMode.value = "manual";
+        syncTimeModeUI();
+        alert("이 사진은 촬영시간(EXIF)이 없어. 시간 모드를 '직접 지정'으로 바꿨어.");
+      }
     }
   });
+
+  async function readExifDate(file){
+    try{
+      const exif = await exifr.parse(file, { pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"] });
+      return exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate || null;
+    }catch{
+      return null;
+    }
+  }
+
+  applyBtn.addEventListener("click", async () => {
+    if (!baseImg) return alert("사진 먼저 업로드해줘!");
+    if (!logoImg) return alert("로고가 아직 로딩 중이야. 잠깐만!");
+
+    const d = getStampDate();
+    if (!d) return;
+
+    // ✅ 렌더
+    resetCtxState();
+    renderStamp({
+      img: baseImg,
+      logo: logoImg,
+      stampText: formatStamp(d),
+      textHex: textColor.value,
+      boxHex: boxColor.value,
+      boxAlphaPct: Number(boxAlpha.value),
+      pos: position.value,
+      logoScalePct: Number(logoScale.value),
+      fontScalePct: Number(fontScale.value),
+      // 필요하면 아주 살짝 보정 가능:
+      // brightness: 1.00 ~ 1.05
+      brightness: 1.00
+    });
+
+    // ✅ PNG(무손실)로 저장
+    lastRenderedBlob = await canvasToBlob("image/png", 1.0);
+    statusEl.textContent = "스탬프 적용 완료!";
+  });
+
+  function getStampDate(){
+    if (timeMode.value === "exif") {
+      if (!exifDate) {
+        alert("촬영시간(EXIF)을 찾지 못했어. 시간 모드를 '직접 지정'으로 바꿔줘.");
+        return null;
+      }
+      return exifDate;
+    }
+    if (!manualTime.value) {
+      alert("스탬프 시간을 선택해줘!");
+      return null;
+    }
+    return new Date(manualTime.value);
+  }
+
+  // ✅ iOS 사진앱 저장: 공유 시트 우선
+  downloadBtn.addEventListener("click", async () => {
+    if (!lastRenderedBlob) return alert("먼저 스탬프 적용해줘!");
+
+    const d = getStampDate();
+    if (!d) return;
+
+    const stampStr = formatStamp(d);
+    const safeStamp = stampStr.replace(/:/g, "-").replace(/\s+/g, "_");
+    const ts = fileTimestamp(new Date());
+    const filename = `${safeStamp}_SalsalDay_${ts}.png`;
+
+    const file = new File([lastRenderedBlob], filename, { type: "image/png" });
+
+    // 공유 시트가 가장 안정적(사진앱 저장 가능)
+    if (navigator.share && navigator.canShare) {
+      try {
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return; // 공유 시트에서 “이미지 저장” 선택하면 사진앱에 들어감
+        }
+      } catch (e) {
+        // 취소/실패는 fallback으로
+      }
+    }
+
+    // fallback: 새 탭으로 열어서 길게 눌러 “이미지 저장”
+    const objUrl = URL.createObjectURL(lastRenderedBlob);
+    window.open(objUrl, "_blank");
+    alert("공유가 지원되지 않아 새 창으로 열었어. 이미지를 길게 눌러 '이미지 저장' 해줘!");
+  });
+
+  function resetCtxState(){
+    // ✅ 누적 방지(이게 은근 어두워짐 체감 만들 때가 있음)
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.filter = "none";
+  }
 
   function formatStamp(d) {
     const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -266,37 +381,93 @@
     return `${mm}.${dd} ${hh2}:${min} ${ampm}`;
   }
 
-  function renderStamp(img, logo, stampText){
+  function fileTimestamp(d){
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    const HH = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    const ss = String(d.getSeconds()).padStart(2,"0");
+    return `${yyyy}${MM}${dd}_${HH}${mm}${ss}`;
+  }
+
+  function hexToRgb(hex) {
+    const h = hex.replace("#", "");
+    return {
+      r: parseInt(h.slice(0,2), 16),
+      g: parseInt(h.slice(2,4), 16),
+      b: parseInt(h.slice(4,6), 16),
+    };
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function renderStamp(opts) {
+    const { img, logo, stampText, textHex, boxHex, boxAlphaPct, pos, logoScalePct, fontScalePct, brightness } = opts;
     const W = img.naturalWidth;
     const H = img.naturalHeight;
+
     cv.width = W;
     cv.height = H;
-    ctx.drawImage(img, 0, 0);
 
-    const fontPx = W * (fontScale.value / 100);
-    ctx.font = `600 ${fontPx}px monospace`;
-    const textW = ctx.measureText(stampText).width;
+    // ✅ 밝기 보정(필요할 때만 1.03~1.05 추천)
+    ctx.filter = brightness && brightness !== 1 ? `brightness(${brightness})` : "none";
+    ctx.drawImage(img, 0, 0);
+    ctx.filter = "none"; // 다음 작업 영향 방지
 
     const pad = W * 0.03;
-    const boxPad = fontPx * 0.7;
-    const boxW = textW + boxPad * 2;
-    const boxH = fontPx + boxPad;
+    const fontPx = W * (fontScalePct / 100);
+    const radius = fontPx * 0.6;
+    const boxPadX = fontPx * 0.75;
+    const boxPadY = fontPx * 0.45;
 
-    const x = pad;
-    const y = H - pad - boxH;
+    ctx.font = `600 ${fontPx}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
 
-    const bg = boxColor.value;
-    ctx.fillStyle = bg;
-    ctx.globalAlpha = boxAlpha.value / 100;
-    ctx.fillRect(x, y, boxW, boxH);
-    ctx.globalAlpha = 1;
+    const textW = ctx.measureText(stampText).width;
+    const boxW = textW + boxPadX * 2;
+    const boxH = fontPx + boxPadY * 2;
 
-    ctx.fillStyle = textColor.value;
+    let boxX, boxY;
+    if (pos === "bl") { boxX = pad;            boxY = H - pad - boxH; }
+    if (pos === "br") { boxX = W - pad - boxW; boxY = H - pad - boxH; }
+    if (pos === "tl") { boxX = pad;            boxY = pad; }
+    if (pos === "tr") { boxX = W - pad - boxW; boxY = pad; }
+
+    // 배경 박스(반투명)
+    const bg = hexToRgb(boxHex);
+    ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${boxAlphaPct/100})`;
+    roundRectPath(ctx, boxX, boxY, boxW, boxH, radius);
+    ctx.fill();
+
+    // 텍스트
+    ctx.fillStyle = textHex;
     ctx.textBaseline = "middle";
-    ctx.fillText(stampText, x + boxPad, y + boxH / 2);
+    ctx.fillText(stampText, boxX + boxPadX, boxY + boxH / 2);
 
-    const logoSize = W * (logoScale.value / 100);
-    ctx.drawImage(logo, W - pad - logoSize, H - pad - logoSize, logoSize, logoSize);
+    // 로고: 텍스트 박스 반대편 자동 배치
+    const logoSize = W * (logoScalePct / 100);
+    let logoX, logoY;
+    if (pos === "bl") { logoX = W - pad - logoSize; logoY = H - pad - logoSize; }
+    if (pos === "br") { logoX = pad;                logoY = H - pad - logoSize; }
+    if (pos === "tl") { logoX = W - pad - logoSize; logoY = pad; }
+    if (pos === "tr") { logoX = pad;                logoY = pad; }
+
+    ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+  }
+
+  function canvasToBlob(type, quality){
+    return new Promise((resolve) => {
+      cv.toBlob((blob) => resolve(blob), type, quality);
+    });
   }
 </script>
 </body>
