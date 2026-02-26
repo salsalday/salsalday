@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Photo Stamp (Manual or EXIF Time)</title>
+<title>Photo Stamp</title>
 
-<!-- EXIF 읽기 (JPG 기준 잘 됨) -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js"></script>
 
 <style>
@@ -20,15 +19,15 @@
   input[type="file"]{ width:100%; }
   input[type="color"]{ width:44px; height:32px; border:none; background:transparent; }
   input[type="range"]{ width:100%; }
-  select, input[type="text"], input[type="number"], input[type="datetime-local"]{
+  select, input[type="datetime-local"]{
     width:100%; background:#0f1012; color:var(--text);
     border:1px solid #2a2b2f; border-radius:10px; padding:10px;
     outline:none;
   }
-  .btns{ display:flex; gap:10px; margin-top:12px; }
+  .btns{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
   button{
     border:1px solid #2a2b2f; background:#0f1012; color:var(--text);
-    border-radius:12px; padding:10px 12px; cursor:pointer; width:100%;
+    border-radius:12px; padding:10px 12px; cursor:pointer; flex:1;
   }
   button.primary{ background:#1f6feb; border-color:#1f6feb; }
   .hint{ color:var(--muted); font-size:12px; line-height:1.35; margin-top:10px; }
@@ -36,11 +35,8 @@
   canvas{ max-width:100%; height:auto; border-radius:14px; border:1px solid #2a2b2f; background:#000; }
   .tiny{ font-size:12px; color:var(--muted); }
   .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-
-  /* 컬러 선택 박스 삐져나옴 방지 */
   .grid .row > label{ flex: 0 0 72px; }
   .grid input[type="color"]{ flex: 0 0 44px; width:44px; min-width:44px; }
-
   .badge {
     display:inline-block; padding:6px 10px; border-radius:999px;
     background:#0f1012; border:1px solid #2a2b2f; color:var(--muted);
@@ -52,7 +48,7 @@
 <body>
 <div class="wrap">
   <section class="card">
-    <h1>SalsalDay TimeStamp</h1>
+    <h1>사진 스탬프</h1>
 
     <div class="row">
       <label>사진 업로드</label>
@@ -63,16 +59,15 @@
       <label>로고</label>
       <div style="width:100%; display:flex; gap:10px; align-items:center;">
         <span class="badge" id="logoStatus">로고 로딩 중…</span>
-        <button id="reloadLogoBtn" style="width:auto; padding:10px 12px;">로고 다시 불러오기</button>
+        <button id="reloadLogoBtn" style="flex:0 0 auto;">로고 재시도</button>
       </div>
     </div>
 
-    <!-- ✅ 스탬프 시간 옵션 추가 -->
     <div class="row">
       <label>시간 모드</label>
       <select id="timeMode">
         <option value="manual">직접 지정</option>
-        <option value="exif">사진 촬영시간(EXIF) 사용</option>
+        <option value="exif">사진 촬영시간(EXIF)</option>
       </select>
     </div>
 
@@ -129,13 +124,13 @@
 
     <div class="btns">
       <button id="applyBtn" class="primary">스탬프 적용</button>
-      <button id="downloadBtn">다운로드</button>
+      <button id="downloadBtn">다운로드(파일앱)</button>
+      <button id="savePhotosBtn">사진앱에 저장(공유)</button>
     </div>
 
     <div class="hint">
-      - 로고는 깃허브 raw에서 자동으로 불러와서 고정 사용함.<br>
-      - 시간 모드를 “사진 촬영시간(EXIF)”로 하면, 사진에 촬영정보가 있을 때만 동작함.<br>
-      - 파일명: (스탬프시간)_SalsalDay_Timestamp.jpg
+      - iOS는 웹에서 “자동 사진 저장”이 불가라서, 사진앱 저장은 “공유”로 처리돼.<br>
+      - ‘사진앱에 저장(공유)’ 누른 뒤, 공유 시트에서 <b>‘이미지 저장’</b>을 선택해줘.
     </div>
   </section>
 
@@ -150,7 +145,6 @@
 <script>
   const $ = (id) => document.getElementById(id);
 
-  // ✅ 고정 로고 URL (요청한 주소)
   const LOGO_URL = "https://raw.githubusercontent.com/salsalday/salsalday/refs/heads/main/salsalday_logo.png";
 
   const photoInput = $("photoInput");
@@ -171,6 +165,8 @@
 
   const applyBtn  = $("applyBtn");
   const downloadBtn = $("downloadBtn");
+  const savePhotosBtn = $("savePhotosBtn");
+
   const statusEl  = $("status");
   const cv        = $("cv");
   const ctx       = cv.getContext("2d");
@@ -179,15 +175,13 @@
   let baseFile = null;
   let logoImg = null;
 
-  let exifDate = null;         // 사진 촬영시간(있으면)
+  let exifDate = null;
   let lastRenderedDataUrl = null;
 
-  // 기본값: 지금 시간 세팅
   setManualTimeToNow();
+  syncTimeModeUI();
 
-  // 시간 모드에 따라 입력창 enable/disable
   timeMode.addEventListener("change", () => syncTimeModeUI());
-
   setNowBtn.addEventListener("click", () => {
     setManualTimeToNow();
     timeMode.value = "manual";
@@ -199,13 +193,10 @@
     manualTime.disabled = isExif;
     setNowBtn.disabled = isExif;
   }
-  syncTimeModeUI();
 
-  // ✅ 로고 로드
   async function loadLogoFromUrl(){
     try{
       logoStatus.textContent = "로고 로딩 중…";
-      // 캐시 무시하고 싶으면 쿼리 스트링 붙이기
       const bust = `?v=${Date.now()}`;
       const res = await fetch(LOGO_URL + bust, { cache: "no-store" });
       if(!res.ok) throw new Error("로고 다운로드 실패");
@@ -217,25 +208,22 @@
         logoImg = img;
         logoStatus.textContent = "로고 로드 완료";
       };
-      img.onerror = () => { throw new Error("로고 이미지 디코딩 실패"); };
+      img.onerror = () => { throw new Error("로고 디코딩 실패"); };
       img.src = objUrl;
     } catch(e){
       console.error(e);
       logoStatus.textContent = "로고 로드 실패";
-      alert("로고를 불러오지 못했어. 인터넷 연결 확인 후 다시 시도해줘.");
+      alert("로고를 불러오지 못했어. 인터넷 연결 확인 후 다시 눌러줘!");
     }
   }
-
   reloadLogoBtn.addEventListener("click", () => loadLogoFromUrl());
   loadLogoFromUrl();
 
-  // ✅ 사진 업로드
   photoInput.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     baseFile = file;
 
-    // 이미지 표시
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
@@ -248,17 +236,11 @@
     };
     img.src = url;
 
-    // ✅ EXIF 촬영시간 읽기
     exifDate = await readExifDate(file);
     if (exifDate) {
       exifBadge.textContent = formatStamp(exifDate);
-      // 편의: 촬영시간을 선택했을 때 바로 반영되도록
-      if (timeMode.value === "exif") {
-        syncTimeModeUI();
-      }
     } else {
       exifBadge.textContent = "촬영정보 없음";
-      // exif 모드인데 촬영정보가 없으면 manual로 되돌리기
       if (timeMode.value === "exif") {
         timeMode.value = "manual";
         syncTimeModeUI();
@@ -269,21 +251,19 @@
 
   async function readExifDate(file){
     try{
-      // DateTimeOriginal / CreateDate / ModifyDate 순서
       const exif = await exifr.parse(file, { pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"] });
       return exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate || null;
-    }catch(e){
+    }catch{
       return null;
     }
   }
 
-  // ✅ 스탬프 적용
   applyBtn.addEventListener("click", async () => {
     if (!baseImg) return alert("사진 먼저 업로드해줘!");
     if (!logoImg) return alert("로고가 아직 로딩 중이야. 잠깐만!");
 
     const d = getStampDate();
-    if (!d) return; // 내부에서 alert 처리
+    if (!d) return;
 
     const stamp = formatStamp(d);
 
@@ -311,8 +291,6 @@
       }
       return exifDate;
     }
-
-    // manual
     if (!manualTime.value) {
       alert("스탬프 시간을 선택해줘!");
       return null;
@@ -320,7 +298,7 @@
     return new Date(manualTime.value);
   }
 
-  // ✅ 다운로드 (파일명 규칙)
+  // ✅ 파일앱 다운로드 (사파리/일부 환경)
   downloadBtn.addEventListener("click", () => {
     if (!baseImg) return alert("사진 먼저 업로드해줘!");
     const url = lastRenderedDataUrl || cv.toDataURL("image/jpeg", 0.92);
@@ -339,7 +317,44 @@
     a.click();
   });
 
-  // 시간 입력 기본값
+  // ✅ 사진앱 저장(공유 시트)
+  // - iOS에서 사진앱에 넣는 가장 안정적인 웹 방식
+  savePhotosBtn.addEventListener("click", async () => {
+    if (!baseImg) return alert("사진 먼저 업로드해줘!");
+
+    const d = getStampDate();
+    if (!d) return;
+
+    const stampStr = formatStamp(d);
+    const safeStamp = stampStr.replace(/:/g, "-").replace(/\s+/g, "_");
+    const ts = fileTimestamp(new Date());
+    const filename = `${safeStamp}_SalsalDay_${ts}.jpg`;
+
+    const blob = await canvasToJpegBlob(0.92);
+
+    // Web Share API (iOS에서 공유 시트 열림)
+    if (navigator.share && navigator.canShare) {
+      const file = new File([blob], filename, { type: "image/jpeg" });
+      try {
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: filename
+          });
+          // 사용자가 공유 시트에서 “이미지 저장” 누르면 사진앱에 저장됨
+          return;
+        }
+      } catch (e) {
+        // 공유 취소/실패는 조용히 fallback
+      }
+    }
+
+    // fallback: 새 탭으로 열어서 길게 눌러 “사진에 추가/이미지 저장”
+    const objUrl = URL.createObjectURL(blob);
+    window.open(objUrl, "_blank");
+    alert("공유가 지원되지 않아서 새 창으로 열었어. 이미지 길게 눌러서 '사진에 저장' 해줘!");
+  });
+
   function setManualTimeToNow(){
     const d = new Date();
     manualTime.value = toDatetimeLocalValue(d);
@@ -353,17 +368,13 @@
     return `${yyyy}-${MM}-${dd}T${HH}:${mm}`;
   }
 
-  // ✅ 스탬프 텍스트 포맷
   function formatStamp(d) {
-    // "02.26 06:12 AM"
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
-
     let hh = d.getHours();
     const ampm = hh >= 12 ? "PM" : "AM";
     hh = hh % 12;
     if (hh === 0) hh = 12;
-
     const min = String(d.getMinutes()).padStart(2, "0");
     const hh2 = String(hh).padStart(2, "0");
     return `${mm}.${dd} ${hh2}:${min} ${ampm}`;
@@ -381,11 +392,7 @@
 
   function hexToRgb(hex) {
     const h = hex.replace("#", "");
-    return {
-      r: parseInt(h.slice(0,2), 16),
-      g: parseInt(h.slice(2,4), 16),
-      b: parseInt(h.slice(4,6), 16),
-    };
+    return { r: parseInt(h.slice(0,2), 16), g: parseInt(h.slice(2,4), 16), b: parseInt(h.slice(4,6), 16) };
   }
 
   function renderStamp(opts) {
@@ -410,25 +417,21 @@
     const boxW = textW + boxPadX * 2;
     const boxH = fontPx + boxPadY * 2;
 
-    // 텍스트 박스 위치
     let boxX, boxY;
     if (pos === "bl") { boxX = pad;            boxY = H - pad - boxH; }
     if (pos === "br") { boxX = W - pad - boxW; boxY = H - pad - boxH; }
     if (pos === "tl") { boxX = pad;            boxY = pad; }
     if (pos === "tr") { boxX = W - pad - boxW; boxY = pad; }
 
-    // 배경 박스
     const bg = hexToRgb(boxHex);
     ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${boxAlphaPct/100})`;
     roundRect(ctx, boxX, boxY, boxW, boxH, radius);
     ctx.fill();
 
-    // 텍스트
     ctx.fillStyle = textHex;
     ctx.textBaseline = "middle";
     ctx.fillText(stampText, boxX + boxPadX, boxY + boxH / 2);
 
-    // 로고: 텍스트 박스 반대편 자동 배치
     const logoSize = W * (logoScalePct / 100);
     let logoX, logoY;
     if (pos === "bl") { logoX = W - pad - logoSize; logoY = H - pad - logoSize; }
@@ -448,6 +451,12 @@
     ctx.arcTo(x, y + h, x, y, rr);
     ctx.arcTo(x, y, x + w, y, rr);
     ctx.closePath();
+  }
+
+  function canvasToJpegBlob(quality){
+    return new Promise((resolve) => {
+      cv.toBlob((blob) => resolve(blob), "image/jpeg", quality);
+    });
   }
 </script>
 </body>
