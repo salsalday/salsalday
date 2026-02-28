@@ -8,214 +8,575 @@
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 
 <style>
-:root { --bg:#0f0f10; --panel:#17181a; --text:#e9e9ea; --muted:#a8a8ab; }
-body { margin:0; font-family: system-ui,-apple-system; background:var(--bg); color:var(--text);}
-.wrap { display:grid; grid-template-columns:360px 1fr; gap:16px; padding:16px;}
-@media (max-width:900px){ .wrap{grid-template-columns:1fr;} }
-.card{background:var(--panel);border:1px solid #2a2b2f;border-radius:14px;padding:14px;}
-h1{margin:0 0 16px;font-size:18px;}
-.row{display:flex;gap:10px;align-items:center;margin:10px 0;}
-.row>label{flex:0 0 120px;color:var(--muted);font-size:13px;}
-input[type="file"],select,input[type="datetime-local"]{
-width:100%;background:#0f1012;color:var(--text);
-border:1px solid #2a2b2f;border-radius:10px;padding:8px;}
-input[type="color"]{width:44px;height:32px;border:none;background:transparent;}
-input[type="range"]{width:100%;}
-button{flex:1;border:1px solid #2a2b2f;background:#0f1012;color:var(--text);
-border-radius:12px;padding:10px;cursor:pointer;}
-button.primary{background:#1f6feb;border-color:#1f6feb;}
-.stage{display:flex;justify-content:center;align-items:center;min-height:60vh;}
-canvas{max-width:100%;border-radius:14px;border:1px solid #2a2b2f;}
-.hint{text-align:center;color:var(--muted);font-size:12px;margin-top:12px;}
+  :root { --bg:#0f0f10; --panel:#17181a; --text:#e9e9ea; --muted:#a8a8ab; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { display:grid; grid-template-columns: 360px 1fr; gap:16px; padding:16px; }
+  @media (max-width: 900px){ .wrap{ grid-template-columns: 1fr; } }
+  .card { background:var(--panel); border:1px solid #2a2b2f; border-radius:14px; padding:14px; }
+  h1{ font-size:18px; margin:0 0 16px; font-weight:600; }
+  .row{ display:flex; gap:10px; align-items:center; margin:10px 0; }
+  .row > label{ flex: 0 0 120px; color:var(--muted); font-size:13px; }
+  input[type="file"]{ width:100%; }
+  input[type="color"]{ width:44px; height:32px; border:none; background:transparent; }
+  input[type="range"]{ width:100%; }
+  select, input[type="datetime-local"]{
+    width:100%; background:#0f1012; color:var(--text);
+    border:1px solid #2a2b2f; border-radius:10px; padding:10px;
+    outline:none;
+  }
+  .btns{ display:flex; gap:10px; margin-top:16px; }
+  button{
+    border:1px solid #2a2b2f; background:#0f1012; color:var(--text);
+    border-radius:12px; padding:12px 14px; cursor:pointer; flex:1;
+  }
+  button.primary{ background:#1f6feb; border-color:#1f6feb; }
+  .hint{ color:var(--muted); font-size:12px; line-height:1.4; margin-top:16px; text-align:center; }
+  .stage{ display:flex; justify-content:center; align-items:center; min-height:60vh; }
+  canvas{ max-width:100%; height:auto; border-radius:14px; border:1px solid #2a2b2f; background:#000; }
+  .tiny{ font-size:12px; color:var(--muted); }
+
+  .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .grid .row > label{ flex: 0 0 72px; }
+  .grid input[type="color"]{ flex: 0 0 44px; width:44px; min-width:44px; }
+
+  .badge {
+    display:inline-block; padding:6px 10px; border-radius:999px;
+    background:#0f1012; border:1px solid #2a2b2f; color:var(--muted);
+    font-size:12px;
+  }
+
+  .toggle {
+    display:flex; align-items:center; gap:10px;
+    width:100%; padding:10px;
+    background:#0f1012; border:1px solid #2a2b2f; border-radius:12px;
+  }
+  .toggle input { width:auto; }
 </style>
 </head>
 
 <body>
 <div class="wrap">
-<section class="card">
-<h1>SalsalDay TimeStamp</h1>
+  <section class="card">
+    <h1>SalsalDay TimeStamp</h1>
 
-<div class="row">
-<label>사진</label>
-<input id="photoInput" type="file" accept="image/*">
-</div>
+    <div class="row">
+      <label>사진 업로드</label>
+      <input id="photoInput" type="file" accept="image/*" />
+    </div>
 
-<div class="row">
-<label>시간모드</label>
-<select id="timeMode">
-<option value="exif">사진 촬영시간(EXIF)</option>
-<option value="manual">직접 지정</option>
-</select>
-</div>
+    <div class="row">
+      <label>로고</label>
+      <div style="width:100%; display:flex; gap:10px; align-items:center;">
+        <span class="badge" id="logoStatus">로고 로딩 중…</span>
+        <button id="reloadLogoBtn" style="flex:0 0 auto;">로고 재시도</button>
+      </div>
+    </div>
 
-<div class="row">
-<label>스탬프 시간</label>
-<input id="manualTime" type="datetime-local">
-</div>
+    <div class="row">
+      <label>시간 모드</label>
+      <select id="timeMode">
+        <option value="manual">직접 지정</option>
+        <option value="exif">사진 촬영시간(EXIF)</option>
+      </select>
+    </div>
 
-<div class="row">
-<label>텍스트색</label>
-<input id="textColor" type="color" value="#ffffff">
-</div>
+    <div class="row">
+      <label>스탬프 시간</label>
+      <input id="manualTime" type="datetime-local" />
+    </div>
 
-<div class="row">
-<label>배경색</label>
-<input id="boxColor" type="color" value="#000000">
-</div>
+    <div class="row">
+      <label></label>
+      <button id="setNowBtn">지금 시간 넣기</button>
+    </div>
 
-<div class="row">
-<label>투명도</label>
-<input id="boxAlpha" type="range" min="0" max="100" value="65">
-</div>
+    <div class="row">
+      <label>촬영시간</label>
+      <span class="badge" id="exifBadge">아직 없음</span>
+    </div>
 
-<div class="row">
-<label>로고 크기</label>
-<input id="logoScale" type="range" min="5" max="25" value="12">
-</div>
+    <div class="row">
+      <label>표기 옵션</label>
+      <div class="toggle">
+        <input id="use24h" type="checkbox" />
+        <span class="tiny">24시간제 사용 (예: 16:21)</span>
+      </div>
+    </div>
 
-<div style="display:flex;gap:10px;margin-top:12px;">
-<button id="applyBtn" class="primary">스탬프 적용</button>
-<button id="downloadBtn">다운로드</button>
-</div>
+    <div class="grid">
+      <div class="row">
+        <label>텍스트</label>
+        <input id="textColor" type="color" value="#ffffff" />
+      </div>
+      <div class="row">
+        <label>배경</label>
+        <input id="boxColor" type="color" value="#000000" />
+      </div>
+    </div>
 
-<div class="hint">(c) 2026. SalsalDay Co. All rights reserved.</div>
-</section>
+    <div class="row">
+      <label>배경 투명도</label>
+      <input id="boxAlpha" type="range" min="0" max="100" value="65" />
+    </div>
 
-<section class="card">
-<div class="stage">
-<canvas id="cv"></canvas>
-</div>
-</section>
+    <div class="row">
+      <label>위치</label>
+      <select id="position">
+        <option value="bl">좌하단</option>
+        <option value="br">우하단</option>
+        <option value="tl">좌상단</option>
+        <option value="tr">우상단</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>로고 크기</label>
+      <input id="logoScale" type="range" min="5" max="30" value="14" />
+    </div>
+
+    <div class="row">
+      <label>폰트 크기</label>
+      <input id="fontScale" type="range" min="2" max="10" value="5" />
+    </div>
+
+    <div class="btns">
+      <button id="applyBtn" class="primary">스탬프 적용</button>
+      <button id="downloadBtn">다운로드</button>
+    </div>
+
+    <div class="hint">(c) 2026. SalsalDay Co. All rights reserved.</div>
+  </section>
+
+  <section class="card">
+    <div class="tiny" id="status">사진을 업로드하면 미리보기가 뜸.</div>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+    </div>
+  </section>
 </div>
 
 <script>
-const $=id=>document.getElementById(id);
-const cv=$("cv");
-const ctx=cv.getContext("2d",{colorSpace:"display-p3"});
+  const $ = (id) => document.getElementById(id);
 
-const LOGO_URL="https://raw.githubusercontent.com/salsalday/salsalday/refs/heads/main/salsalday_logo.png";
+  const LOGO_URL = "https://raw.githubusercontent.com/salsalday/salsalday/refs/heads/main/salsalday_logo.png";
 
-let baseImg=null;
-let logoImg=new Image();
-logoImg.src=LOGO_URL+"?v="+Date.now();
+  const photoInput = $("photoInput");
+  const logoStatus = $("logoStatus");
+  const reloadLogoBtn = $("reloadLogoBtn");
 
-let exifDate=null;
-let finalBlob=null;
+  const timeMode = $("timeMode");
+  const manualTime = $("manualTime");
+  const setNowBtn = $("setNowBtn");
+  const exifBadge = $("exifBadge");
 
-$("photoInput").addEventListener("change",async e=>{
-const file=e.target.files[0];
-if(!file)return;
+  const use24h = $("use24h");
 
-const url=URL.createObjectURL(file);
-const img=new Image();
-img.onload=()=>{
-baseImg=img;
-cv.width=img.naturalWidth;
-cv.height=img.naturalHeight;
-ctx.drawImage(img,0,0);
-};
-img.src=url;
+  const textColor = $("textColor");
+  const boxColor = $("boxColor");
+  const boxAlpha = $("boxAlpha");
+  const position = $("position");
+  const logoScale = $("logoScale");
+  const fontScale = $("fontScale");
 
-const exif=await exifr.parse(file,{tiff:true,exif:true});
-exifDate=exif?.DateTimeOriginal||null;
-});
+  const applyBtn = $("applyBtn");
+  const downloadBtn = $("downloadBtn");
+  const statusEl = $("status");
 
-$("applyBtn").addEventListener("click",async()=>{
-if(!baseImg)return alert("사진 먼저 업로드!");
+  const cv = $("cv");
+  let ctx = null;
+  try { ctx = cv.getContext("2d", { colorSpace: "display-p3" }); }
+  catch { ctx = cv.getContext("2d"); }
 
-ctx.clearRect(0,0,cv.width,cv.height);
-ctx.drawImage(baseImg,0,0);
+  let baseImg = null;
+  let logoImg = null;
 
-let d;
-if($("timeMode").value==="exif"&&exifDate){
-d=exifDate;
-}else{
-if(!$("manualTime").value)return alert("시간 선택!");
-d=new Date($("manualTime").value);
-}
+  let shotDate = null;
+  let shotSource = null; // "EXIF" | "GPS" | "FALLBACK"
 
-const days=["일","월","화","수","목","금","토"];
-const yyyy=d.getFullYear();
-const mm=String(d.getMonth()+1).padStart(2,"0");
-const dd=String(d.getDate()).padStart(2,"0");
-const day=days[d.getDay()];
-let hh=d.getHours();
-const ampm=hh>=12?"PM":"AM";
-hh=hh%12;if(hh===0)hh=12;
-const min=String(d.getMinutes()).padStart(2,"0");
+  let lastRenderedBlob = null;
 
-const line1=`${yyyy}.${mm}.${dd}(${day})`;
-const line2=`${String(hh).padStart(2,"0")}:${min} ${ampm}`;
+  // ✅ 디폴트: EXIF 모드
+  timeMode.value = "exif";
 
-const pad=cv.width*0.03;
-const fontSize=cv.width*0.05;
+  setManualTimeToNow();
+  syncTimeModeUI();
+  loadLogoFromUrl();
 
-ctx.font=`bold ${fontSize}px monospace`;
-const textW=Math.max(ctx.measureText(line1).width,ctx.measureText(line2).width);
-const boxW=textW+fontSize*1.5;
-const boxH=fontSize*2+fontSize;
+  timeMode.addEventListener("change", syncTimeModeUI);
+  setNowBtn.addEventListener("click", () => {
+    setManualTimeToNow();
+    timeMode.value = "manual";
+    syncTimeModeUI();
+  });
+  reloadLogoBtn.addEventListener("click", loadLogoFromUrl);
 
-const x=pad;
-const y=cv.height-pad-boxH;
+  function syncTimeModeUI(){
+    const isExif = timeMode.value === "exif";
+    manualTime.disabled = isExif;
+    setNowBtn.disabled = isExif;
+  }
 
-const bg=$("boxColor").value;
-const alpha=$("boxAlpha").value/100;
-ctx.fillStyle=hexToRGBA(bg,alpha);
-ctx.fillRect(x,y,boxW,boxH);
+  function setManualTimeToNow(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    const HH = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    manualTime.value = `${yyyy}-${MM}-${dd}T${HH}:${mm}`;
+  }
 
-ctx.fillStyle=$("textColor").value;
-ctx.fillText(line1,x+fontSize*0.7,y+fontSize*0.4);
-ctx.fillText(line2,x+fontSize*0.7,y+fontSize*1.4);
+  async function loadLogoFromUrl(){
+    try{
+      logoStatus.textContent = "로고 로딩 중…";
+      const res = await fetch(LOGO_URL + "?v=" + Date.now(), { cache: "no-store" });
+      if(!res.ok) throw new Error("logo fetch fail");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
 
-const logoSize=cv.width*($("logoScale").value/100);
-ctx.drawImage(logoImg,cv.width-logoSize-pad,cv.height-logoSize-pad,logoSize,logoSize);
+      const img = new Image();
+      img.onload = () => {
+        logoImg = img;
+        logoStatus.textContent = "로고 로드 완료";
+      };
+      img.onerror = () => {
+        logoStatus.textContent = "로고 로드 실패";
+        alert("로고 이미지 디코딩 실패");
+      };
+      img.src = url;
+    } catch {
+      logoStatus.textContent = "로고 로드 실패";
+      alert("로고를 불러오지 못했어. 인터넷 연결 확인 후 다시 시도해줘.");
+    }
+  }
 
-finalBlob=await compressUnder20MB();
-alert("스탬프 완료 + 블로그모드 압축 적용!");
-});
+  photoInput.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-$("downloadBtn").addEventListener("click",async()=>{
-if(!finalBlob)return alert("먼저 스탬프 적용!");
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      baseImg = img;
+      resetCtxState();
+      cv.width = img.naturalWidth;
+      cv.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      statusEl.textContent = `업로드 완료 (${img.naturalWidth}x${img.naturalHeight})`;
+      lastRenderedBlob = null;
+    };
+    img.src = url;
 
-const now=new Date();
-const filename=`SalsalDay_${now.getFullYear()}${now.getMonth()+1}${now.getDate()}.jpg`;
+    const result = await readShotDateStrong(file);
+    shotDate = result.date;
+    shotSource = result.source;
 
-const file=new File([finalBlob],filename,{type:"image/jpeg"});
+    if (shotDate) {
+      const tag = shotSource === "EXIF" ? "EXIF" : (shotSource === "GPS" ? "GPS" : "Fallback");
+      const stamp = formatStamp(shotDate, use24h.checked);
+      exifBadge.textContent = `${stamp.line1} ${stamp.line2} (${tag})`;
+    } else {
+      exifBadge.textContent = "촬영정보 없음";
+      if (timeMode.value === "exif") {
+        timeMode.value = "manual";
+        syncTimeModeUI();
+        alert("촬영시간을 찾지 못했어. 시간 모드를 '직접 지정'으로 바꿨어.");
+      }
+    }
+  });
 
-if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
-await navigator.share({files:[file]});
-return;
-}
+  async function readShotDateStrong(file){
+    try{
+      const exif = await exifr.parse(file, {
+        translateValues: false,
+        tiff: true,
+        exif: true,
+        gps: true,
+        ifd0: true
+      });
 
-const url=URL.createObjectURL(finalBlob);
-window.open(url,"_blank");
-});
+      const candidates = [
+        exif?.DateTimeOriginal,
+        exif?.CreateDate,
+        exif?.ModifyDate,
+        exif?.DateTime
+      ];
 
-function hexToRGBA(hex,a){
-const r=parseInt(hex.substr(1,2),16);
-const g=parseInt(hex.substr(3,2),16);
-const b=parseInt(hex.substr(5,2),16);
-return`rgba(${r},${g},${b},${a})`;
-}
+      for (const v of candidates) {
+        const d = coerceToDate(v);
+        if (d) return { date: d, source: "EXIF" };
+      }
 
-async function compressUnder20MB(){
-const MAX=20*1024*1024;
-const qualities=[0.92,0.88,0.85,0.82];
-for(const q of qualities){
-const blob=await canvasToBlob("image/jpeg",q);
-if(blob.size<MAX)return blob;
-}
-const scale=0.85;
-const temp=document.createElement("canvas");
-temp.width=cv.width*scale;
-temp.height=cv.height*scale;
-temp.getContext("2d").drawImage(cv,0,0,temp.width,temp.height);
-return await new Promise(res=>temp.toBlob(res,"image/jpeg",0.85));
-}
+      const gpsD = parseGpsDateTime(exif);
+      if (gpsD) return { date: gpsD, source: "GPS" };
 
-function canvasToBlob(type,quality){
-return new Promise(res=>cv.toBlob(res,type,quality));
-}
+      if (typeof file.lastModified === "number" && file.lastModified > 0) {
+        return { date: new Date(file.lastModified), source: "FALLBACK" };
+      }
+
+      return { date: null, source: null };
+    } catch {
+      if (typeof file.lastModified === "number" && file.lastModified > 0) {
+        return { date: new Date(file.lastModified), source: "FALLBACK" };
+      }
+      return { date: null, source: null };
+    }
+  }
+
+  function coerceToDate(v){
+    if (!v) return null;
+    if (v instanceof Date && !isNaN(v.getTime())) return v;
+    if (typeof v === "number" && isFinite(v)) {
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof v === "string") return parseExifDateString(v);
+    return null;
+  }
+
+  function parseExifDateString(s){
+    const m = s.match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m) return null;
+    const yyyy = Number(m[1]);
+    const MM = Number(m[2]);
+    const dd = Number(m[3]);
+    const HH = Number(m[4] ?? 0);
+    const mm = Number(m[5] ?? 0);
+    const ss = Number(m[6] ?? 0);
+    const d = new Date(yyyy, MM-1, dd, HH, mm, ss);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function parseGpsDateTime(exif){
+    const ds = exif?.GPSDateStamp;
+    const ts = exif?.GPSTimeStamp;
+    const datePart = typeof ds === "string" ? parseExifDateString(ds) : null;
+    if (!datePart) return null;
+
+    let HH=0, mm=0, ss=0;
+    if (Array.isArray(ts) && ts.length >= 2) {
+      HH = toNumber(ts[0]); mm = toNumber(ts[1]); ss = toNumber(ts[2] ?? 0);
+    }
+    const d = new Date(datePart.getFullYear(), datePart.getMonth(), datePart.getDate(), HH, mm, ss);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function toNumber(v){
+    if (typeof v === "number") return Math.round(v);
+    if (v && typeof v === "object" && "numerator" in v && "denominator" in v) {
+      const n = Number(v.numerator), den = Number(v.denominator);
+      if (isFinite(n) && isFinite(den) && den !== 0) return Math.round(n/den);
+    }
+    return 0;
+  }
+
+  applyBtn.addEventListener("click", async () => {
+    if (!baseImg) return alert("사진 먼저 업로드해줘!");
+    if (!logoImg) return alert("로고가 아직 로딩 중이야. 잠깐만!");
+
+    const d = getStampDate();
+    if (!d) return;
+
+    resetCtxState();
+
+    const stamp = formatStamp(d, use24h.checked);
+
+    renderStamp({
+      img: baseImg,
+      logo: logoImg,
+      dateLine: stamp.line1,
+      timeLine: stamp.line2,
+      textHex: textColor.value,
+      boxHex: boxColor.value,
+      boxAlphaPct: Number(boxAlpha.value),
+      pos: position.value,
+      logoScalePct: Number(logoScale.value),
+      fontScalePct: Number(fontScale.value),
+      brightness: 1.00
+    });
+
+    lastRenderedBlob = await canvasToBlob("image/png", 1.0);
+    statusEl.textContent = "스탬프 적용 완료!";
+  });
+
+  function getStampDate(){
+    if (timeMode.value === "exif") {
+      if (!shotDate) {
+        alert("촬영시간을 찾지 못했어. 시간 모드를 '직접 지정'으로 바꿔줘.");
+        return null;
+      }
+      return shotDate;
+    }
+    if (!manualTime.value) {
+      alert("스탬프 시간을 선택해줘!");
+      return null;
+    }
+    return new Date(manualTime.value);
+  }
+
+  downloadBtn.addEventListener("click", async () => {
+    if (!lastRenderedBlob) return alert("먼저 스탬프 적용해줘!");
+
+    const d = getStampDate();
+    if (!d) return;
+
+    const stamp = formatStamp(d, use24h.checked);
+    const safeStamp = (stamp.line1 + "_" + stamp.line2).replace(/:/g, "-").replace(/\s+/g, "_");
+    const ts = fileTimestamp(new Date());
+    const filename = `${safeStamp}_SalsalDay_${ts}.png`;
+
+    const file = new File([lastRenderedBlob], filename, { type: "image/png" });
+
+    if (navigator.share && navigator.canShare) {
+      try {
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      } catch {}
+    }
+
+    const objUrl = URL.createObjectURL(lastRenderedBlob);
+    window.open(objUrl, "_blank");
+    alert("공유가 지원되지 않아 새 창으로 열었어. 이미지를 길게 눌러 '이미지 저장' 해줘!");
+  });
+
+  function resetCtxState(){
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.filter = "none";
+  }
+
+  function formatStamp(d, use24) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+
+    const days = ["일","월","화","수","목","금","토"];
+    const day = days[d.getDay()];
+    const line1 = `${yyyy}.${mm}.${dd}(${day})`;
+
+    const min = String(d.getMinutes()).padStart(2, "0");
+
+    let line2 = "";
+    if (use24) {
+      const HH = String(d.getHours()).padStart(2, "0");
+      line2 = `${HH}:${min}`;
+    } else {
+      let hh = d.getHours();
+      const ampm = hh >= 12 ? "PM" : "AM";
+      hh = hh % 12;
+      if (hh === 0) hh = 12;
+      const hh2 = String(hh).padStart(2, "0");
+      line2 = `${hh2}:${min} ${ampm}`;
+    }
+
+    return { line1, line2 };
+  }
+
+  function fileTimestamp(d){
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    const HH = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    const ss = String(d.getSeconds()).padStart(2,"0");
+    return `${yyyy}${MM}${dd}_${HH}${mm}${ss}`;
+  }
+
+  function hexToRgb(hex) {
+    const h = hex.replace("#", "");
+    return { r: parseInt(h.slice(0,2), 16), g: parseInt(h.slice(2,4), 16), b: parseInt(h.slice(4,6), 16) };
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function renderStamp(opts) {
+    const { img, logo, dateLine, timeLine, textHex, boxHex, boxAlphaPct, pos, logoScalePct, fontScalePct, brightness } = opts;
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+
+    cv.width = W;
+    cv.height = H;
+
+    ctx.filter = brightness && brightness !== 1 ? `brightness(${brightness})` : "none";
+    ctx.drawImage(img, 0, 0);
+    ctx.filter = "none";
+
+    const pad = W * 0.03;
+
+    const fontPx = W * (fontScalePct / 100);
+    const dateSize = fontPx;
+    const timeSize = Math.max(10, fontPx*0.88);
+
+    const boxPadX = dateSize * 0.75;
+    const boxPadY = dateSize * 0.55;
+    const radius = dateSize * 0.6;
+
+    ctx.font = `700 ${dateSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    const dateW = ctx.measureText(dateLine).width;
+
+    ctx.font = `400 ${timeSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    const timeW = ctx.measureText(timeLine).width;
+
+    const textW = Math.max(dateW, timeW);
+    const boxW = textW + boxPadX * 2;
+
+    const lineGap = dateSize * 0.20;
+    const textH = dateSize + lineGap + timeSize;
+    const boxH = textH + boxPadY * 2;
+
+    let boxX, boxY;
+    if (pos === "bl") { boxX = pad;            boxY = H - pad - boxH; }
+    if (pos === "br") { boxX = W - pad - boxW; boxY = H - pad - boxH; }
+    if (pos === "tl") { boxX = pad;            boxY = pad; }
+    if (pos === "tr") { boxX = W - pad - boxW; boxY = pad; }
+
+    const bg = hexToRgb(boxHex);
+    ctx.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${boxAlphaPct/100})`;
+    roundRectPath(ctx, boxX, boxY, boxW, boxH, radius);
+    ctx.fill();
+
+    const startX = boxX + boxPadX;
+    const startY = boxY + boxPadY;
+
+    ctx.fillStyle = textHex;
+    ctx.textBaseline = "top";
+
+    ctx.font = `700 ${dateSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.fillText(dateLine, startX, startY);
+
+    ctx.font = `400 ${timeSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.fillText(timeLine, startX, startY + dateSize + lineGap);
+
+    const logoSize = W * (logoScalePct / 100);
+    let logoX, logoY;
+    if (pos === "bl") { logoX = W - pad - logoSize; logoY = H - pad - logoSize; }
+    if (pos === "br") { logoX = pad;                logoY = H - pad - logoSize; }
+    if (pos === "tl") { logoX = W - pad - logoSize; logoY = pad; }
+    if (pos === "tr") { logoX = pad;                logoY = pad; }
+
+    ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+  }
+
+  function canvasToBlob(type, quality){
+    return new Promise((resolve) => {
+      cv.toBlob((blob) => resolve(blob), type, quality);
+    });
+  }
 </script>
 </body>
 </html>
+
