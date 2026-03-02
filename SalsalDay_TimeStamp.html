@@ -395,7 +395,7 @@
       brightness: 1.00
     });
 
-    lastRenderedBlob = await canvasToBlob("image/png", 1.0);
+    lastRenderedBlob = await compressUnder20MB();
     statusEl.textContent = "스탬프 적용 완료!";
   });
 
@@ -423,9 +423,9 @@
     const stamp = formatStamp(d, use24h.checked);
     const safeStamp = (stamp.line1 + "_" + stamp.line2).replace(/:/g, "-").replace(/\s+/g, "_");
     const ts = fileTimestamp(new Date());
-    const filename = `${safeStamp}_SalsalDay_${ts}.png`;
+    const filename = `${safeStamp}_SalsalDay_${ts}.jpg`;
 
-    const file = new File([lastRenderedBlob], filename, { type: "image/png" });
+    const file = new File([lastRenderedBlob], filename, { type: "image/jpeg" });
 
     if (navigator.share && navigator.canShare) {
       try {
@@ -576,7 +576,34 @@
       cv.toBlob((blob) => resolve(blob), type, quality);
     });
   }
+// 🔥 여기 바로 아래에 붙여 넣기
+async function compressUnder20MB(){
+  const MAX = 20 * 1024 * 1024; // 20MB
+  const qualities = [0.92, 0.88, 0.85, 0.82];
+
+  for(const q of qualities){
+    const blob = await canvasToBlob("image/jpeg", q);
+    if(blob.size < MAX){
+      console.log("압축 성공 품질:", q, "용량:", (blob.size/1024/1024).toFixed(2),"MB");
+      return blob;
+    }
+  }
+
+  // 그래도 크면 리사이즈
+  const scale = 0.85;
+  const temp = document.createElement("canvas");
+  temp.width = cv.width * scale;
+  temp.height = cv.height * scale;
+
+  const tctx = temp.getContext("2d");
+  tctx.drawImage(cv, 0, 0, temp.width, temp.height);
+
+  return await new Promise(resolve => {
+    temp.toBlob(resolve, "image/jpeg", 0.85);
+  });
+}  
 </script>
 </body>
 </html>
+
 
